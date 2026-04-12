@@ -3,8 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "main": "public/electron.cjs",
-  "homepage": "./",
+  "homepage": "/",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,10 +11,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:8080 && electron .\"",
-    "electron-build": "npm run build && electron-builder",
-    "dist": "npm run build && npm run electron-build"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -78,10 +74,6 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.21",
-    "concurrently": "^8.2.2",
-    "electron": "^41.2.0",
-    "electron-builder": "^26.8.1",
-    "electron-is-dev": "^3.0.1",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
@@ -93,34 +85,6 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19",
-    "vitest": "^3.2.4",
-    "wait-on": "^7.2.0"
-  },
-  "build": {
-    "appId": "com.formhub.app",
-    "productName": "FormFlow",
-    "directories": {
-      "buildResources": "public",
-      "output": "electron-release"
-    },
-    "files": [
-      "build-web/**/*",
-      "public/electron.cjs",
-      "public/preload.cjs",
-      "node_modules/**/*"
-    ],
-    "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "FormFlow"
-    }
+    "vitest": "^3.2.4"
   }
 }
