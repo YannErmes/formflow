@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { Plus, Copy, Trash2, Info, ChevronDown, Edit, Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,36 @@ const SOPTemplateSection = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreatorOpen, setIsCreatorOpen] = useState(false);
+
+  // Load draft on component mount
+  useEffect(() => {
+    const draft = storage.getSOPDraft();
+    if (draft.url || draft.text || draft.description || draft.selectedKeywords.length > 0 || draft.editingId) {
+      setUrl(draft.url);
+      setText(draft.text);
+      setEntryType(draft.entryType);
+      setDescription(draft.description);
+      setSelectedKeywords(draft.selectedKeywords);
+      setKeywordInput(draft.keywordInput);
+      setSearchQuery(draft.searchQuery);
+      setEditingId(draft.editingId);
+      toast.success("Draft restored from your last session");
+    }
+  }, []);
+
+  // Save draft whenever form fields change
+  useEffect(() => {
+    storage.setSOPDraft({
+      entryType,
+      url,
+      text,
+      description,
+      selectedKeywords,
+      keywordInput,
+      searchQuery,
+      editingId,
+    });
+  }, [entryType, url, text, description, selectedKeywords, keywordInput, searchQuery, editingId]);
 
   // Get all unique keywords from existing links
   const allKeywords = useMemo(() => {
@@ -126,6 +156,17 @@ const SOPTemplateSection = () => {
     setDescription("");
     setSelectedKeywords([]);
     setKeywordInput("");
+    // Clear the draft after saving
+    storage.setSOPDraft({
+      entryType: "link",
+      url: "",
+      text: "",
+      description: "",
+      selectedKeywords: [],
+      keywordInput: "",
+      searchQuery: "",
+      editingId: null,
+    });
     refresh();
   };
 
@@ -153,6 +194,17 @@ const SOPTemplateSection = () => {
     setDescription("");
     setSelectedKeywords([]);
     setKeywordInput("");
+    // Clear the draft when canceling
+    storage.setSOPDraft({
+      entryType: "link",
+      url: "",
+      text: "",
+      description: "",
+      selectedKeywords: [],
+      keywordInput: "",
+      searchQuery: "",
+      editingId: null,
+    });
   };
 
   const addKeyword = (keyword: string) => {

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { Plus, Copy, Save, Trash2, Mail, Download, Upload, Clock, CheckCircle, AlertCircle, Edit2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,28 @@ export default function EmailTemplateSection() {
   const translatedComposeSubject = useCachedTranslation(composeSubject);
   const translatedComposeBody = useCachedTranslation(composeBody);
   const translatedComposeRecipient = useCachedTranslation(composeRecipient);
+
+  // Load draft on component mount
+  useEffect(() => {
+    const draft = storage.getEmailDraft();
+    if (draft.subject || draft.recipient || draft.body || draft.selectedTemplateId) {
+      setComposeSubject(draft.subject);
+      setComposeRecipient(draft.recipient);
+      setComposeBody(draft.body);
+      setSelectedTemplateId(draft.selectedTemplateId);
+      toast.success("Draft restored from your last session");
+    }
+  }, []);
+
+  // Save draft whenever compose fields change
+  useEffect(() => {
+    storage.setEmailDraft({
+      subject: composeSubject,
+      recipient: composeRecipient,
+      body: composeBody,
+      selectedTemplateId,
+    });
+  }, [composeSubject, composeRecipient, composeBody, selectedTemplateId]);
 
   const refresh = () => {
     setTemplates(storage.getEmailTemplates());
@@ -161,6 +183,8 @@ export default function EmailTemplateSection() {
     storage.setSavedEmails(emails);
     toast.success("Email saved as draft");
     setComposeSubject(""); setComposeRecipient(""); setComposeBody(""); setSelectedTemplateId("");
+    // Clear the draft after saving
+    storage.setEmailDraft({ subject: "", recipient: "", body: "", selectedTemplateId: "" });
     refresh();
     return savedEmail;
   };
@@ -217,11 +241,15 @@ export default function EmailTemplateSection() {
     storage.setSavedEmails(updated);
     toast.success("Email updated");
     setComposeSubject(""); setComposeRecipient(""); setComposeBody(""); setSelectedTemplateId(""); setEditingEmailId(null);
+    // Clear the draft after updating
+    storage.setEmailDraft({ subject: "", recipient: "", body: "", selectedTemplateId: "" });
     refresh();
   };
 
   const cancelEdit = () => {
     setComposeSubject(""); setComposeRecipient(""); setComposeBody(""); setSelectedTemplateId(""); setEditingEmailId(null);
+    // Clear the draft when canceling
+    storage.setEmailDraft({ subject: "", recipient: "", body: "", selectedTemplateId: "" });
   };
 
   const copyEmail = async (email: SavedEmail) => {

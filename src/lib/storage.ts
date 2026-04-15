@@ -62,6 +62,38 @@ export interface SOPLink {
   createdAt: string;
 }
 
+// Draft persistence interfaces
+export interface EmailDraft {
+  subject: string;
+  recipient: string;
+  body: string;
+  selectedTemplateId: string;
+}
+
+export interface RemarkDraft {
+  selectedId: string | null;
+  values: Record<string, string>;
+  mergingIds: string[];
+  editableContent: string;
+}
+
+export interface SOPDraft {
+  entryType: "link" | "text";
+  url: string;
+  text: string;
+  description: string;
+  selectedKeywords: string[];
+  keywordInput: string;
+  searchQuery: string;
+  editingId: string | null;
+}
+
+export interface FormDraft {
+  selectedTags: string[];
+  values: Record<string, string>;
+  expandedFields: string[];
+}
+
 function load<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -96,4 +128,48 @@ export const storage = {
 
   getSOPLinks: (): SOPLink[] => load("sop_links", []),
   setSOPLinks: (s: SOPLink[]) => save("sop_links", s),
+
+  // Draft persistence methods
+  getEmailDraft: (): EmailDraft => load("email_draft", {
+    subject: "",
+    recipient: "",
+    body: "",
+    selectedTemplateId: "",
+  }),
+  setEmailDraft: (draft: EmailDraft) => save("email_draft", draft),
+
+  getRemarkDraft: (): RemarkDraft => load("remark_draft", {
+    selectedId: null,
+    values: {},
+    mergingIds: [],
+    editableContent: "",
+  }),
+  setRemarkDraft: (draft: RemarkDraft) => save("remark_draft", draft),
+
+  getSOPDraft: (): SOPDraft => load("sop_draft", {
+    entryType: "link",
+    url: "",
+    text: "",
+    description: "",
+    selectedKeywords: [],
+    keywordInput: "",
+    searchQuery: "",
+    editingId: null,
+  }),
+  setSOPDraft: (draft: SOPDraft) => save("sop_draft", draft),
+
+  getFormDraft: (): FormDraft => load("form_draft", {
+    selectedTags: [],
+    values: {},
+    expandedFields: [],
+  }),
+  setFormDraft: (draft: FormDraft) => save("form_draft", draft),
+
+  // Clear all drafts
+  clearAllDrafts: () => {
+    localStorage.removeItem("email_draft");
+    localStorage.removeItem("remark_draft");
+    localStorage.removeItem("sop_draft");
+    localStorage.removeItem("form_draft");
+  },
 };

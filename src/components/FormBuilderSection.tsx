@@ -409,6 +409,26 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
   const [infoPopupPosition, setInfoPopupPosition] = useState({ top: 150, left: 150 });
   const [infoPopupDrag, setInfoPopupDrag] = useState<{ x: number; y: number; top: number; left: number } | null>(null);
 
+  // Load draft on component mount
+  useEffect(() => {
+    const draft = storage.getFormDraft();
+    if (draft.selectedTags.length > 0 || Object.keys(draft.values).length > 0 || draft.expandedFields.length > 0) {
+      setSelectedTags(draft.selectedTags);
+      setValues(draft.values);
+      setExpandedFields(new Set(draft.expandedFields));
+      toast.success("Draft restored from your last session");
+    }
+  }, []);
+
+  // Save draft whenever form state changes
+  useEffect(() => {
+    storage.setFormDraft({
+      selectedTags,
+      values,
+      expandedFields: Array.from(expandedFields),
+    });
+  }, [selectedTags, values, expandedFields]);
+
   const filteredFields = useMemo(
     () => {
       const filtered = selectedTags.length === 0 ? [] : fields.filter(f => selectedTags.some(t => f.tags.includes(t)));
@@ -462,6 +482,12 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
     setValues({});
     setSelectedTags([]);
     setExpandedFields(new Set());
+    // Clear the draft after saving
+    storage.setFormDraft({
+      selectedTags: [],
+      values: {},
+      expandedFields: [],
+    });
     refresh();
   };
 

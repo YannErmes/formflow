@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { Plus, Copy, Save, Trash2, MessageSquare, Download, Upload, Edit2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,28 @@ function RemarkFiller({ templates, refresh }: { templates: RemarkTemplate[]; ref
   const [mergeingIds, setMergingIds] = useState<string[]>([]);
   const [showMerge, setShowMerge] = useState(false);
   const [editableContent, setEditableContent] = useState<string>("");
+
+  // Load draft on component mount
+  useEffect(() => {
+    const draft = storage.getRemarkDraft();
+    if (draft.selectedId || Object.keys(draft.values).length > 0 || draft.mergingIds.length > 0) {
+      setSelectedId(draft.selectedId);
+      setValues(draft.values);
+      setMergingIds(draft.mergingIds);
+      setEditableContent(draft.editableContent);
+      toast.success("Draft restored from your last session");
+    }
+  }, []);
+
+  // Save draft whenever relevant state changes
+  useEffect(() => {
+    storage.setRemarkDraft({
+      selectedId,
+      values,
+      mergingIds: mergeingIds,
+      editableContent,
+    });
+  }, [selectedId, values, mergeingIds, editableContent]);
 
   const selected = templates.find(t => t.id === selectedId);
   const placeholders = useMemo(() => selected ? extractPlaceholders(selected.template) : [], [selected]);
@@ -111,6 +133,15 @@ function RemarkFiller({ templates, refresh }: { templates: RemarkTemplate[]; ref
     toast.success(t("remarkSaved"));
     setValues({});
     setSelectedId(null);
+    setMergingIds([]);
+    setEditableContent("");
+    // Clear the draft after saving
+    storage.setRemarkDraft({
+      selectedId: null,
+      values: {},
+      mergingIds: [],
+      editableContent: "",
+    });
     refresh();
   };
 
