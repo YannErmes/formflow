@@ -32,6 +32,9 @@ function RemarkFiller({ templates, refresh }: { templates: RemarkTemplate[]; ref
   const { t } = useLanguage();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [mergeingIds, setMergingIds] = useState<string[]>([]);
+  const [showMerge, setShowMerge] = useState(false);
+  const [editableContent, setEditableContent] = useState<string>("");
 
   const selected = templates.find(t => t.id === selectedId);
   const placeholders = useMemo(() => selected ? extractPlaceholders(selected.template) : [], [selected]);
@@ -44,19 +47,42 @@ function RemarkFiller({ templates, refresh }: { templates: RemarkTemplate[]; ref
       text = text.split(`{${p}}`).join(values[p] || `{${p}}`);
       text = text.split(`"${p}"`).join(values[p] || `"${p}"`);
     });
+    
+    // Merge additional templates
+    if (mergeingIds.length > 0) {
+      const mergedTexts = [text];
+      mergeingIds.forEach(id => {
+        const tmpl = templates.find(t => t.id === id);
+        if (tmpl) {
+          let mergedText = tmpl.template;
+          const mPlaceholders = extractPlaceholders(tmpl.template);
+          mPlaceholders.forEach(p => {
+            mergedText = mergedText.split(`{${p}}`).join(values[p] || `{${p}}`);
+            mergedText = mergedText.split(`"${p}"`).join(values[p] || `"${p}"`);
+          });
+          mergedTexts.push(mergedText);
+        }
+      });
+      const merged = mergedTexts.join("\n\n---\n\n");
+      setEditableContent(merged); // Auto-populate the editable field
+      return merged;
+    }
+    
+    setEditableContent(text); // Also populate for single template
     return text;
-  }, [selected, placeholders, values]);
+  }, [selected, placeholders, values, mergeingIds, templates]);
 
   const allFilled = placeholders.every(p => (values[p] || "").trim());
 
   const copyRemark = async () => {
+    const textToCopy = mergeingIds.length > 0 ? editableContent : interpolated;
     try {
-      await navigator.clipboard.writeText(interpolated);
+      await navigator.clipboard.writeText(textToCopy);
       toast.success(t("copiedField"));
     } catch (err) {
       // Fallback for older browsers
       const textArea = document.createElement("textarea");
-      textArea.value = interpolated;
+      textArea.value = textToCopy;
       document.body.appendChild(textArea);
       textArea.select();
       try {
@@ -71,11 +97,12 @@ function RemarkFiller({ templates, refresh }: { templates: RemarkTemplate[]; ref
 
   const saveRemark = () => {
     if (!selected) return;
+    const textToSave = mergeingIds.length > 0 ? editableContent : interpolated;
     const saved: SavedRemark = {
       id: generateId(),
       templateId: selected.id,
       templateName: selected.name,
-      text: interpolated,
+      text: textToSave,
       savedAt: new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" }),
     };
     const all = storage.getSavedRemarks();
@@ -128,9 +155,56 @@ function RemarkFiller({ templates, refresh }: { templates: RemarkTemplate[]; ref
               ))}
             </div>
 
-            <div className="p-4 rounded-md bg-muted/50">
-              <Label className="text-xs text-muted-foreground mb-1 block">{t("preview")}</Label>
-              <p className="text-sm whitespace-pre-wrap">{interpolated}</p>
+            {mergeingIds.length === 0 ? (
+              <div className="p-4 rounded-md bg-muted/50">
+                <Label className="text-xs text-muted-foreground mb-1 block">{t("preview")}</Label>
+                <p className="text-sm whitespace-pre-wrap">{interpolated}</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label className="text-sm">Merged Remark</Label>
+                <Textarea
+                  value={editableContent}
+                  onChange={e => setEditableContent(e.target.value)}
+                  placeholder="Merged content will appear here..."
+                  className="min-h-32"
+                />
+              </div>
+            )}
+
+            {/* Merge Templates Section */}
+            <div className="border rounded-md p-3 space-y-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowMerge(!showMerge)}
+                className="w-full"
+              >
+                {showMerge ? "Hide" : "+ Merge with another template"}
+              </Button>
+              
+              {showMerge && (
+                <div className="max-h-48 overflow-y-auto border rounded p-2 space-y-1">
+                  <p className="text-xs text-muted-foreground mb-2">Select templates to merge:</p>
+                  {templates.filter(t => t.id !== selectedId).map(t => (
+                    <div key={t.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer" onClick={() => {
+                      if (mergeingIds.includes(t.id)) {
+                        setMergingIds(mergeingIds.filter(id => id !== t.id));
+                      } else {
+                        setMergingIds([...mergeingIds, t.id]);
+                      }
+                    }}>
+                      <input type="checkbox" checked={mergeingIds.includes(t.id)} onChange={() => {}} className="cursor-pointer" />
+                      <span className="text-sm">{t.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {mergeingIds.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  {mergeingIds.length} template(s) selected to merge
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -158,11 +232,25 @@ export default function RemarkTemplateSection() {
   const [editingRemarkId, setEditingRemarkId] = useState<string | null>(null);
   const [editRemarkText, setEditRemarkText] = useState("");
   const [isCreatorOpen, setIsCreatorOpen] = useState(false);
+  const [mergedRemarkIds, setMergedRemarkIds] = useState<string[]>([]);
+  const [showMergedPreview, setShowMergedPreview] = useState(false);
+  const [editableMergedContent, setEditableMergedContent] = useState("");
 
   const refresh = () => {
     setTemplates(storage.getRemarkTemplates());
     setSavedRemarks(storage.getSavedRemarks());
   };
+
+  const mergedRemarkContent = useMemo(() => {
+    if (mergedRemarkIds.length === 0) return "";
+    const mergedTexts = mergedRemarkIds
+      .map(id => savedRemarks.find(r => r.id === id)?.text)
+      .filter(Boolean) as string[];
+    if (mergedTexts.length === 0) return "";
+    const merged = mergedTexts.join("\n\n---\n\n");
+    setEditableMergedContent(merged);
+    return merged;
+  }, [mergedRemarkIds, savedRemarks]);
 
   const exportTemplates = () => {
     const data = JSON.stringify(templates, null, 2);
@@ -384,6 +472,125 @@ export default function RemarkTemplateSection() {
           <p className="text-muted-foreground text-center py-8">{t("noSavedRemarks")}</p>
         ) : (
           <>
+            {/* Merge Saved Remarks Section */}
+            <Card className="p-4 border-purple-500/30 bg-purple-500/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Merge Saved Remarks</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowMergedPreview(!showMergedPreview)}
+                  className="w-full"
+                >
+                  {showMergedPreview ? "Hide" : "+ Merge Multiple Remarks"}
+                </Button>
+
+                {showMergedPreview && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">Select remarks to merge:</p>
+                    <div className="max-h-48 overflow-y-auto border rounded p-2 space-y-2">
+                      {savedRemarks.map(r => (
+                        <div
+                          key={r.id}
+                          className="flex items-start gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer"
+                          onClick={() => {
+                            if (mergedRemarkIds.includes(r.id)) {
+                              setMergedRemarkIds(mergedRemarkIds.filter(id => id !== r.id));
+                            } else {
+                              setMergedRemarkIds([...mergedRemarkIds, r.id]);
+                            }
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={mergedRemarkIds.includes(r.id)}
+                            onChange={() => {}}
+                            className="cursor-pointer mt-1"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium">{r.templateName}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-2">{r.text}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {mergedRemarkIds.length > 0 && (
+                      <>
+                        <div className="p-3 rounded-md bg-muted/50 space-y-2">
+                          <Label className="text-xs text-muted-foreground">Merged Result:</Label>
+                          <Textarea
+                            value={editableMergedContent}
+                            onChange={e => setEditableMergedContent(e.target.value)}
+                            placeholder="Merged content will appear here..."
+                            rows={5}
+                            className="resize-y text-sm"
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(editableMergedContent);
+                                toast.success(t("copiedField"));
+                              } catch (err) {
+                                const textArea = document.createElement("textarea");
+                                textArea.value = editableMergedContent;
+                                document.body.appendChild(textArea);
+                                textArea.select();
+                                try {
+                                  document.execCommand("copy");
+                                  toast.success(t("copiedField"));
+                                } catch {
+                                  toast.error("Failed to copy");
+                                }
+                                document.body.removeChild(textArea);
+                              }
+                            }}
+                            size="sm"
+                            className="flex-1"
+                          >
+                            <Copy className="h-3 w-3 mr-1" /> Copy
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              const newRemark: SavedRemark = {
+                                id: generateId(),
+                                templateId: "",
+                                templateName: `Merged (${mergedRemarkIds.length})`,
+                                text: editableMergedContent,
+                                savedAt: new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" }),
+                              };
+                              const all = storage.getSavedRemarks();
+                              all.unshift(newRemark);
+                              storage.setSavedRemarks(all);
+                              toast.success("Merged remark saved!");
+                              setMergedRemarkIds([]);
+                              setEditableMergedContent("");
+                              setShowMergedPreview(false);
+                              refresh();
+                            }}
+                            size="sm"
+                            variant="secondary"
+                            className="flex-1"
+                          >
+                            <Save className="h-3 w-3 mr-1" /> Save Merged
+                          </Button>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground text-center">
+                          {mergedRemarkIds.length} remark(s) selected
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {editingRemarkId && (
               <Card className="p-4 ring-2 ring-primary">
                 <CardHeader><CardTitle className="text-sm">{t("editRemark")}</CardTitle></CardHeader>

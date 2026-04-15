@@ -442,7 +442,7 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
 
   const copyAll = async () => {
     if (!requiredComplete) { toast.error("Fill all required fields first"); return; }
-    const text = filteredFields.map(f => `${f.name}: ${values[f.id] || ""}`).join("\n");
+    const text = filteredFields.map(f => `${f.name}: ${values[f.id] || ""}`).join("\n\n");
     await copyToClipboard(text, "Form copied to clipboard");
   };
 
@@ -656,6 +656,8 @@ export default function FormBuilderSection() {
   const [fields, setFields] = useState<FormField[]>(storage.getFields());
   const [savedForms, setSavedForms] = useState<SavedForm[]>(storage.getSavedForms());
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  const [editingFormId, setEditingFormId] = useState<string | null>(null);
+  const [editingFormValues, setEditingFormValues] = useState<{ [key: string]: string }>({});
   const [customStatusInput, setCustomStatusInput] = useState("");
   const [fieldFilterTags, setFieldFilterTags] = useState<string[]>([]);
   const [draggingFieldId, setDraggingFieldId] = useState<string | null>(null);
@@ -708,11 +710,77 @@ export default function FormBuilderSection() {
     toast.success("Field deleted");
   };
 
+  const deleteTag = (tagToDelete: string) => {
+    // For each field, if it has only the deleted tag, keep it as placeholder
+    // If it has multiple tags, remove the deleted tag from it
+    const updated = fields.map(field => {
+      if (!field.tags.includes(tagToDelete)) {
+        return field; // Tag not in this field, no change
+      }
+      
+      if (field.tags.length === 1) {
+        // Only tag is the one being deleted - keep it as placeholder/default
+        return field;
+      }
+      
+      // Multiple tags - remove the deleted one
+      return {
+        ...field,
+        tags: field.tags.filter(t => t !== tagToDelete),
+        requiredForTags: field.requiredForTags?.filter(t => t !== tagToDelete)
+      };
+    });
+
+    storage.setFields(updated);
+    setFields(updated);
+    setFieldFilterTags(prev => prev.filter(t => t !== tagToDelete));
+    toast.success(`Tag "${tagToDelete}" deleted. Fields with only this tag kept it as placeholder.`);
+  };
+
   const deleteSavedForm = (id: string) => {
     const updated = savedForms.filter(f => f.id !== id);
     storage.setSavedForms(updated);
     refresh();
     toast.success("Saved form deleted");
+  };
+
+  const editSavedForm = (id: string) => {
+    const form = savedForms.find(f => f.id === id);
+    if (form) {
+      setEditingFormId(id);
+      const values: { [key: string]: string } = {};
+      form.fields.forEach(f => {
+        values[f.name] = f.value;
+      });
+      setEditingFormValues(values);
+    }
+  };
+
+  const saveEditedForm = () => {
+    if (!editingFormId) return;
+    const updated = savedForms.map(f => {
+      if (f.id === editingFormId) {
+        return {
+          ...f,
+          fields: f.fields.map(field => ({
+            name: field.name,
+            value: editingFormValues[field.name] || field.value
+          })),
+          savedAt: new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" })
+        };
+      }
+      return f;
+    });
+    storage.setSavedForms(updated);
+    setSavedForms(updated);
+    setEditingFormId(null);
+    setEditingFormValues({});
+    toast.success("Form updated");
+  };
+
+  const cancelEditForm = () => {
+    setEditingFormId(null);
+    setEditingFormValues({});
   };
 
   const defaultStatuses = ["pending", "waiting_customer", "processed", "on_hold"];
@@ -854,18 +922,28 @@ export default function FormBuilderSection() {
                   <p className="text-sm text-muted-foreground">Filter by tags & reorder:</p>
                   <div className="flex flex-wrap gap-2">
                     {allFieldTags.map(tag => (
-                      <Badge
-                        key={tag}
-                        variant={fieldFilterTags.includes(tag) ? "default" : "outline"}
-                        className="cursor-pointer"
-                        onClick={() => setFieldFilterTags(prev => 
-                          prev.includes(tag) 
-                            ? prev.filter(t => t !== tag)
-                            : [...prev, tag]
-                        )}
-                      >
-                        <Tag className="h-3 w-3 mr-1" />{tag}
-                      </Badge>
+                      <div key={tag} className="flex items-center gap-1 group">
+                        <Badge
+                          variant={fieldFilterTags.includes(tag) ? "default" : "outline"}
+                          className="cursor-pointer"
+                          onClick={() => setFieldFilterTags(prev => 
+                            prev.includes(tag) 
+                              ? prev.filter(t => t !== tag)
+                              : [...prev, tag]
+                          )}
+                        >
+                          <Tag className="h-3 w-3 mr-1" />{tag}
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => deleteTag(tag)}
+                          title="Delete this tag"
+                        >
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
                     ))}
                   </div>
                   {fieldFilterTags.length > 0 && (
@@ -929,19 +1007,48 @@ export default function FormBuilderSection() {
       </TabsContent>
 
       <TabsContent value="saved" className="space-y-3">
-        {savedForms.length === 0 ? (
-          <p className="text-muted-foreground text-center py-8">No saved forms yet.</p>
+        {editingFormId ? (
+          <Card className="p-4">
+            <CardHeader>
+              <CardTitle className="text-lg">Edit Saved Form</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {savedForms.find(f => f.id === editingFormId)?.fields.map((field, idx) => (
+                <div key={idx} className="space-y-2">
+                  <Label className="font-bold">{field.name}</Label>
+                  <Input
+                    value={editingFormValues[field.name] || ""}
+                    onChange={(e) => setEditingFormValues(prev => ({
+                      ...prev,
+                      [field.name]: e.target.value
+                    }))}
+                    placeholder={`Enter ${field.name}`}
+                  />
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <Button onClick={saveEditedForm} className="flex-1">
+                  <Save className="h-4 w-4 mr-2" />Save Changes
+                </Button>
+                <Button onClick={cancelEditForm} variant="secondary" className="flex-1">Cancel</Button>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <>
-            <div className="flex flex-wrap gap-2 mb-4">
-              <span className="text-sm text-muted-foreground">Filter: </span>
-              {allStatuses.map(status => (
-                <Badge key={status} variant="outline" className="cursor-pointer text-xs capitalize">
-                  {status.replace("_", " ")} ({savedForms.filter(f => f.status === status).length})
-                </Badge>
-              ))}
-            </div>
-            {savedForms.map(sf => (
+            {savedForms.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">No saved forms yet.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <span className="text-sm text-muted-foreground">Filter: </span>
+                  {allStatuses.map(status => (
+                    <Badge key={status} variant="outline" className="cursor-pointer text-xs capitalize">
+                      {status.replace("_", " ")} ({savedForms.filter(f => f.status === status).length})
+                    </Badge>
+                  ))}
+                </div>
+                {savedForms.map(sf => (
               <Card key={sf.id} className="p-4">
                 <div className="flex justify-between items-start mb-3">
                   <div>
@@ -972,19 +1079,22 @@ export default function FormBuilderSection() {
                   </div>
                   <div className="flex gap-1">
                     <Button size="sm" variant="ghost" onClick={async () => {
-                      const text = sf.fields.map(f => `${f.name}: ${f.value}`).join("\n");
+                      const text = sf.fields.map(f => `${f.name}: ${f.value}`).join("\n\n");
                       await copyToClipboard(text, "Copied");
                     }}><Copy className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => editSavedForm(sf.id)}><Edit2 className="h-4 w-4 text-primary" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => deleteSavedForm(sf.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                   </div>
                 </div>
                 <div className="text-sm space-y-1">
                   {sf.fields.map((f, i) => (
-                    <div key={i}><span className="font-medium">{f.name}:</span> {f.value}</div>
+                    <div key={i}><span className="font-bold">{f.name}:</span> {f.value}</div>
                   ))}
                 </div>
               </Card>
             ))}
+              </>
+            )}
           </>
         )}
       </TabsContent>
