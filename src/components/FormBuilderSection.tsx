@@ -408,6 +408,10 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
   const [infoPopupOpen, setInfoPopupOpen] = useState<string | null>(null);
   const [infoPopupPosition, setInfoPopupPosition] = useState({ top: 150, left: 150 });
   const [infoPopupDrag, setInfoPopupDrag] = useState<{ x: number; y: number; top: number; left: number } | null>(null);
+  const [multiSelectEnabled, setMultiSelectEnabled] = useState(() => {
+    const saved = localStorage.getItem("tagMultiSelectEnabled");
+    return saved !== null ? JSON.parse(saved) : true;
+  });
 
   // Load draft on component mount
   useEffect(() => {
@@ -438,7 +442,17 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
   );
 
   const toggleTag = (tag: string) => {
-    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+    if (multiSelectEnabled) {
+      // Multi-select: toggle tag on/off
+      setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+    } else {
+      // Single-select: replace current selection
+      setSelectedTags(prev => 
+        prev.includes(tag) && prev.length === 1
+          ? [] // Deselect if clicking the same tag
+          : [tag] // Select this tag only
+      );
+    }
   };
 
   const toggleFieldExpanded = (fieldId: string) => {
@@ -521,7 +535,31 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
   return (
     <div className="space-y-4">
       <div>
-        <Label className="mb-2 block">Select Tags to Build Form</Label>
+        <div className="flex items-center justify-between mb-2">
+          <Label>Select Tags to Build Form</Label>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="fillform-multiselect-toggle" className="text-xs text-muted-foreground cursor-pointer">
+              Multiple Tags
+            </Label>
+            <Switch
+              id="fillform-multiselect-toggle"
+              checked={multiSelectEnabled}
+              onCheckedChange={(enabled) => {
+                setMultiSelectEnabled(enabled);
+                localStorage.setItem("tagMultiSelectEnabled", JSON.stringify(enabled));
+                // Limit to single selection if disabling multi-select
+                if (!enabled && selectedTags.length > 1) {
+                  setSelectedTags([selectedTags[0]]);
+                }
+              }}
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mb-2">
+          {multiSelectEnabled 
+            ? "Click tags to select/deselect multiple" 
+            : "Click a tag to select it (previous selection will be deselected)"}
+        </p>
         <div className="flex flex-wrap gap-2">
           {allTags.map(tag => (
             <Badge
@@ -687,11 +725,42 @@ export default function FormBuilderSection() {
   const [customStatusInput, setCustomStatusInput] = useState("");
   const [fieldFilterTags, setFieldFilterTags] = useState<string[]>([]);
   const [draggingFieldId, setDraggingFieldId] = useState<string | null>(null);
+  const [multiSelectEnabled, setMultiSelectEnabled] = useState(() => {
+    const saved = localStorage.getItem("tagMultiSelectEnabled");
+    return saved !== null ? JSON.parse(saved) : true;
+  });
 
   const refresh = () => {
     setFields(storage.getFields());
     setSavedForms(storage.getSavedForms());
     setEditingFieldId(null);
+  };
+
+  const handleMultiSelectToggle = (enabled: boolean) => {
+    setMultiSelectEnabled(enabled);
+    localStorage.setItem("tagMultiSelectEnabled", JSON.stringify(enabled));
+    // Clear filters when toggling if transitioning to single-select
+    if (!enabled && fieldFilterTags.length > 1) {
+      setFieldFilterTags(fieldFilterTags.length > 0 ? [fieldFilterTags[0]] : []);
+    }
+  };
+
+  const handleTagClick = (tag: string) => {
+    if (multiSelectEnabled) {
+      // Multi-select: toggle tag on/off
+      setFieldFilterTags(prev => 
+        prev.includes(tag) 
+          ? prev.filter(t => t !== tag)
+          : [...prev, tag]
+      );
+    } else {
+      // Single-select: replace current selection
+      setFieldFilterTags(prev => 
+        prev.includes(tag) && prev.length === 1
+          ? [] // Deselect if clicking the same tag
+          : [tag] // Select this tag only
+      );
+    }
   };
 
   const exportFields = () => {
@@ -945,18 +1014,31 @@ export default function FormBuilderSection() {
               </div>
               {allFieldTags.length > 0 && (
                 <div className="mt-3 space-y-2">
-                  <p className="text-sm text-muted-foreground">Filter by tags & reorder:</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Filter by tags & reorder:</p>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="multiselect-toggle" className="text-xs text-muted-foreground cursor-pointer">
+                        Multiple Tags
+                      </Label>
+                      <Switch
+                        id="multiselect-toggle"
+                        checked={multiSelectEnabled}
+                        onCheckedChange={handleMultiSelectToggle}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground italic">
+                    {multiSelectEnabled 
+                      ? "Click tags to select/deselect multiple" 
+                      : "Click a tag to select it (previous selection will be deselected)"}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {allFieldTags.map(tag => (
                       <div key={tag} className="flex items-center gap-1 group">
                         <Badge
                           variant={fieldFilterTags.includes(tag) ? "default" : "outline"}
                           className="cursor-pointer"
-                          onClick={() => setFieldFilterTags(prev => 
-                            prev.includes(tag) 
-                              ? prev.filter(t => t !== tag)
-                              : [...prev, tag]
-                          )}
+                          onClick={() => handleTagClick(tag)}
                         >
                           <Tag className="h-3 w-3 mr-1" />{tag}
                         </Badge>
