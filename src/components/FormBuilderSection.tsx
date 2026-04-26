@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, Copy, Save, Info, X, Trash2, Tag, Download, Upload, Edit2, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { Plus, Copy, Save, Info, X, Trash2, Tag, Download, Upload, Edit2, Clock, CheckCircle, AlertCircle, Menu, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -412,6 +412,8 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
     const saved = localStorage.getItem("tagMultiSelectEnabled");
     return saved !== null ? JSON.parse(saved) : true;
   });
+  const [tagSortOption, setTagSortOption] = useState<"all" | "most-complete" | "least-complete" | "most-used">("all");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // Load draft on component mount
   useEffect(() => {
@@ -528,51 +530,163 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
     };
   }, [infoPopupDrag]);
 
+  // Calculate progress for each tag
+  const getTagProgress = (tag: string) => {
+    const tagFields = fields.filter(f => f.tags.includes(tag));
+    const filledFields = tagFields.filter(f => (values[f.id] || "").trim() !== "");
+    return {
+      total: tagFields.length,
+      filled: filledFields.length,
+      percentage: tagFields.length > 0 ? Math.round((filledFields.length / tagFields.length) * 100) : 0,
+    };
+  };
+
+  // Sort tags based on selected option
+  const sortedTags = useMemo(() => {
+    const tagsCopy = [...allTags];
+    
+    switch (tagSortOption) {
+      case "most-complete":
+        return tagsCopy.sort((a, b) => getTagProgress(b).percentage - getTagProgress(a).percentage);
+      case "least-complete":
+        return tagsCopy.sort((a, b) => getTagProgress(a).percentage - getTagProgress(b).percentage);
+      case "most-used":
+        return tagsCopy.sort((a, b) => getTagProgress(b).total - getTagProgress(a).total);
+      case "all":
+      default:
+        return tagsCopy;
+    }
+  }, [allTags, tagSortOption, values]);
+
   if (allTags.length === 0) {
     return <p className="text-muted-foreground text-center py-8">Create some fields first to start filling forms.</p>;
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <Label>Select Tags to Build Form</Label>
-          <div className="flex items-center gap-2">
-            <Label htmlFor="fillform-multiselect-toggle" className="text-xs text-muted-foreground cursor-pointer">
-              Multiple Tags
-            </Label>
-            <Switch
-              id="fillform-multiselect-toggle"
-              checked={multiSelectEnabled}
-              onCheckedChange={(enabled) => {
-                setMultiSelectEnabled(enabled);
-                localStorage.setItem("tagMultiSelectEnabled", JSON.stringify(enabled));
-                // Limit to single selection if disabling multi-select
-                if (!enabled && selectedTags.length > 1) {
-                  setSelectedTags([selectedTags[0]]);
-                }
-              }}
-            />
+    <div className="flex gap-0 min-h-screen bg-background">
+      {/* Sidebar */}
+      <div
+        className={`${
+          sidebarOpen ? "w-64" : "w-16"
+        } bg-muted/40 border-r border-border transition-all duration-300 flex flex-col`}
+      >
+        {/* Menu Button */}
+        <div className="p-3 border-b border-border">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="w-10 h-10"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </div>
+
+        {/* Sidebar Content */}
+        {sidebarOpen && (
+          <div className="flex-1 overflow-y-auto p-3 space-y-4">
+            {/* Multiple Tags Toggle */}
+            <div className="space-y-2">
+              <Label className="font-semibold text-sm block">Settings</Label>
+              <div className="flex items-center justify-between bg-background rounded-md p-2">
+                <Label htmlFor="fillform-multiselect-toggle" className="text-xs text-muted-foreground cursor-pointer flex-1">
+                  Multiple Tags
+                </Label>
+                <Switch
+                  id="fillform-multiselect-toggle"
+                  checked={multiSelectEnabled}
+                  onCheckedChange={(enabled) => {
+                    setMultiSelectEnabled(enabled);
+                    localStorage.setItem("tagMultiSelectEnabled", JSON.stringify(enabled));
+                    if (!enabled && selectedTags.length > 1) {
+                      setSelectedTags([selectedTags[0]]);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <Label className="font-semibold mb-3 block text-sm">Sort Tags</Label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setTagSortOption("all")}>
+                  <Checkbox checked={tagSortOption === "all"} onChange={() => setTagSortOption("all")} />
+                  <Label className="text-xs cursor-pointer group-hover:text-primary transition-colors flex-1">All Tags</Label>
+                </div>
+                <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setTagSortOption("most-complete")}>
+                  <Checkbox checked={tagSortOption === "most-complete"} onChange={() => setTagSortOption("most-complete")} />
+                  <Label className="text-xs cursor-pointer group-hover:text-primary transition-colors flex-1">Most Complete</Label>
+                </div>
+                <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setTagSortOption("least-complete")}>
+                  <Checkbox checked={tagSortOption === "least-complete"} onChange={() => setTagSortOption("least-complete")} />
+                  <Label className="text-xs cursor-pointer group-hover:text-primary transition-colors flex-1">Least Complete</Label>
+                </div>
+                <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setTagSortOption("most-used")}>
+                  <Checkbox checked={tagSortOption === "most-used"} onChange={() => setTagSortOption("most-used")} />
+                  <Label className="text-xs cursor-pointer group-hover:text-primary transition-colors flex-1">Most Used</Label>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <p className="text-xs text-muted-foreground mb-2">
-          {multiSelectEnabled 
-            ? "Click tags to select/deselect multiple" 
-            : "Click a tag to select it (previous selection will be deselected)"}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {allTags.map(tag => (
-            <Badge
-              key={tag}
-              variant={selectedTags.includes(tag) ? "default" : "outline"}
-              className="cursor-pointer"
-              onClick={() => toggleTag(tag)}
-            >
-              <Tag className="h-3 w-3 mr-1" />{tag}
-            </Badge>
-          ))}
-        </div>
+        )}
+
+        {/* Collapsed View Icons */}
+        {!sidebarOpen && (
+          <div className="flex-1 flex flex-col items-center gap-2 p-2">
+            <div className="text-xs text-muted-foreground font-semibold">☰</div>
+          </div>
+        )}
       </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-4 space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label>Select Tags to Build Form</Label>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              {multiSelectEnabled 
+                ? "Click tags to select/deselect multiple" 
+                : "Click a tag to select it (previous selection will be deselected)"}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {sortedTags.map(tag => {
+                const progress = getTagProgress(tag);
+                const isSelected = selectedTags.includes(tag);
+                
+                return (
+                  <div
+                    key={tag}
+                    className="relative group cursor-pointer"
+                    onClick={() => toggleTag(tag)}
+                  >
+                    <Badge
+                      variant={isSelected ? "default" : "outline"}
+                      className="cursor-pointer px-3 py-1.5 relative overflow-hidden"
+                    >
+                      {/* Progress background - brighter color */}
+                      <div
+                        className="absolute inset-0 bg-cyan-400/60 transition-all duration-300"
+                        style={{ width: `${progress.percentage}%` }}
+                      />
+                      
+                      {/* Content */}
+                      <div className="relative flex items-center gap-1 z-10">
+                        <Tag className="h-3 w-3" />
+                        <span>{tag}</span>
+                      </div>
+                    </Badge>
+                    
+                    {/* Tooltip on hover */}
+                    <div className="invisible group-hover:visible absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded-md shadow-lg whitespace-nowrap z-20 pointer-events-none">
+                      {progress.percentage}% Complete
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
       {filteredFields.length > 0 && (
         <div className="space-y-3">
@@ -712,6 +826,8 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 }
