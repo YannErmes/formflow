@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { storage, FormField, SavedForm } from "@/lib/storage";
 import { useLanguage } from "@/lib/useLanguage";
 import { useCachedTranslation } from "@/lib/useCachedTranslation";
@@ -750,10 +751,13 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
                   <Input value={values[f.id] || ""} onChange={e => setValues({ ...values, [f.id]: e.target.value })} placeholder={`Enter ${f.name.toLowerCase()}`} />
                 )}
                 {f.type === "dropdown" && (
-                  <Select value={values[f.id] || ""} onValueChange={v => setValues({ ...values, [f.id]: v })}>
-                    <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                    <SelectContent>{f.options?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <Combobox
+                    options={f.options || []}
+                    value={values[f.id] || ""}
+                    onChange={v => setValues({ ...values, [f.id]: v })}
+                    placeholder="Select or type..."
+                    searchPlaceholder="Search or type custom value..."
+                  />
                 )}
                 {f.type === "checkbox" && (
                   <div className="flex items-center gap-2">
@@ -1072,10 +1076,19 @@ export default function FormBuilderSection() {
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     [newFiltered[index], newFiltered[targetIndex]] = [newFiltered[targetIndex], newFiltered[index]];
 
-    // Reorder all fields maintaining non-filtered ones at the end
-    const updated = fields.map(f => {
+    // Update order values for all fields
+    // Filtered fields get sequential orders starting from 0
+    // Non-filtered fields get orders after all filtered fields to maintain separation by tag
+    const maxFilteredIndex = newFiltered.length - 1;
+    const updated = fields.map((f, fieldIndex) => {
       const newIndex = newFiltered.findIndex(nf => nf.id === f.id);
-      return { ...f, order: newIndex !== -1 ? newIndex : (f.order || fields.length) };
+      if (newIndex !== -1) {
+        return { ...f, order: newIndex };
+      }
+      // Non-filtered fields get sequential order after filtered fields based on their relative position
+      const nonFilteredFields = fields.filter(field => !newFiltered.some(nf => nf.id === field.id));
+      const nonFilteredIndex = nonFilteredFields.findIndex(nf => nf.id === f.id);
+      return { ...f, order: maxFilteredIndex + 1 + nonFilteredIndex };
     });
     storage.setFields(updated);
     setFields(updated);
