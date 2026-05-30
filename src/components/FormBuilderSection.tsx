@@ -20,6 +20,14 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+function parseDropdownOptions(raw: string) {
+  const matches = [...raw.matchAll(/\(([^)]+)\)/g)].map(match => match[1].trim()).filter(Boolean);
+  if (matches.length > 0) {
+    return matches;
+  }
+  return raw.split(",").map(opt => opt.trim()).filter(Boolean);
+}
+
 const copyToClipboard = async (text: string, successMessage = "Copied") => {
   try {
     await navigator.clipboard.writeText(text);
@@ -39,6 +47,27 @@ const copyToClipboard = async (text: string, successMessage = "Copied") => {
   }
 };
 
+
+
+const copyFieldValue = async (value: string, type: FormField["type"], successMessage: string) => {
+  await copyToClipboard(value, successMessage);
+};
+
+const copyFormToClipboard = async (fields: FormField[], values: Record<string, string>, successMessage = "Form copied to clipboard") => {
+  const text = fields.map(f => {
+    if (f.type === "checkbox") {
+      return `${f.name}: ${values[f.id] === "true" ? "Checked" : "Unchecked"}`;
+    }
+    return `${f.name}: ${values[f.id] || ""}`;
+  }).join("\n\n");
+  await copyToClipboard(text, successMessage);
+};
+
+const copySavedFormToClipboard = async (savedForm: SavedForm) => {
+  const text = savedForm.fields.map(field => `${field.name}: ${field.value}`).join("\n\n");
+  await copyToClipboard(text, "Copied");
+};
+
 function FieldCreator({ onSave }: { onSave: () => void }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<FormField["type"]>("text");
@@ -46,6 +75,7 @@ function FieldCreator({ onSave }: { onSave: () => void }) {
   const [info, setInfo] = useState("");
   const [required, setRequired] = useState(false);
   const [requiredForTags, setRequiredForTags] = useState<string[]>([]);
+  const [saveToInfoEnabled, setSaveToInfoEnabled] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
 
@@ -82,8 +112,9 @@ function FieldCreator({ onSave }: { onSave: () => void }) {
         id: generateId(),
         name: name.trim(),
         type,
-        options: type === "dropdown" ? options.split(",").map(o => o.trim()).filter(Boolean) : undefined,
+        options: type === "dropdown" ? parseDropdownOptions(options) : undefined,
         info: info.trim(),
+        saveToInfoEnabled,
         required,
         requiredForTags: required ? undefined : requiredForTags,
         tags,
@@ -93,7 +124,7 @@ function FieldCreator({ onSave }: { onSave: () => void }) {
       currentFields.push(field);
       storage.setFields(currentFields);
       toast.success("Field created successfully!");
-      setName(""); setType("text"); setOptions(""); setInfo(""); setRequired(false); setRequiredForTags([]); setTags([]); setTagInput("");
+      setName(""); setType("text"); setOptions(""); setInfo(""); setRequired(false); setRequiredForTags([]); setSaveToInfoEnabled(false); setTags([]); setTagInput("");
       onSave();
     } catch (err) {
       console.error("Error saving field:", err);
@@ -125,14 +156,19 @@ function FieldCreator({ onSave }: { onSave: () => void }) {
 
         {type === "dropdown" && (
           <div className="space-y-2">
-            <Label>Options (comma-separated)</Label>
-            <Input value={options} onChange={e => setOptions(e.target.value)} placeholder="Option 1, Option 2, Option 3" />
+            <Label>Options (use parentheses like (Option 1)(Option 2), or comma-separated)</Label>
+            <Input value={options} onChange={e => setOptions(e.target.value)} placeholder="(Option 1)(Option 2) or Option 1, Option 2" />
           </div>
         )}
 
         <div className="space-y-2">
           <Label>Info / Notice</Label>
           <Textarea value={info} onChange={e => setInfo(e.target.value)} placeholder="e.g. Ask customer for this" className="min-h-24 resize-y" />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Switch checked={saveToInfoEnabled} onCheckedChange={setSaveToInfoEnabled} />
+          <span>Enable save-to-notice button for this field</span>
         </div>
 
         <div className="space-y-2">
@@ -233,10 +269,11 @@ function FieldCreator({ onSave }: { onSave: () => void }) {
 function FieldEditor({ field, onSave, onCancel }: { field: FormField; onSave: () => void; onCancel: () => void }) {
   const [name, setName] = useState(field.name);
   const [type, setType] = useState<FormField["type"]>(field.type);
-  const [options, setOptions] = useState(field.options?.join(", ") || "");
+  const [options, setOptions] = useState(field.options?.join(" ") || "");
   const [info, setInfo] = useState(field.info);
   const [required, setRequired] = useState(field.required);
   const [requiredForTags, setRequiredForTags] = useState<string[]>(field.requiredForTags || []);
+  const [saveToInfoEnabled, setSaveToInfoEnabled] = useState(field.saveToInfoEnabled ?? false);
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>(field.tags);
 
@@ -274,8 +311,9 @@ function FieldEditor({ field, onSave, onCancel }: { field: FormField; onSave: ()
       id: field.id,
       name: name.trim(),
       type,
-      options: type === "dropdown" ? options.split(",").map(o => o.trim()).filter(Boolean) : undefined,
+      options: type === "dropdown" ? parseDropdownOptions(options) : undefined,
       info: info.trim(),
+      saveToInfoEnabled,
       required,
       requiredForTags: required ? undefined : requiredForTags,
       tags,
@@ -310,14 +348,19 @@ function FieldEditor({ field, onSave, onCancel }: { field: FormField; onSave: ()
 
         {type === "dropdown" && (
           <div className="space-y-2">
-            <Label>Options (comma-separated)</Label>
-            <Input value={options} onChange={e => setOptions(e.target.value)} placeholder="Option 1, Option 2, Option 3" />
+            <Label>Options (use parentheses like (Option 1)(Option 2), or comma-separated)</Label>
+            <Input value={options} onChange={e => setOptions(e.target.value)} placeholder="(Option 1)(Option 2) or Option 1, Option 2" />
           </div>
         )}
 
         <div className="space-y-2">
           <Label>Info / Notice</Label>
           <Textarea value={info} onChange={e => setInfo(e.target.value)} placeholder="e.g. Ask customer for this" className="min-h-24 resize-y" />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Switch checked={saveToInfoEnabled} onCheckedChange={setSaveToInfoEnabled} />
+          <span>Enable save-to-notice button for this field</span>
         </div>
 
         <div className="space-y-2">
@@ -409,12 +452,6 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
   const [infoPopupOpen, setInfoPopupOpen] = useState<string | null>(null);
   const [infoPopupPosition, setInfoPopupPosition] = useState({ top: 150, left: 150 });
   const [infoPopupDrag, setInfoPopupDrag] = useState<{ x: number; y: number; top: number; left: number } | null>(null);
-  const [multiSelectEnabled, setMultiSelectEnabled] = useState(() => {
-    const saved = localStorage.getItem("tagMultiSelectEnabled");
-    return saved !== null ? JSON.parse(saved) : true;
-  });
-  const [tagSortOption, setTagSortOption] = useState<"all" | "most-complete" | "least-complete" | "most-used">("all");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // Load draft on component mount
   useEffect(() => {
@@ -444,16 +481,14 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
     [fields, selectedTags]
   );
 
-  const toggleTag = (tag: string) => {
-    if (multiSelectEnabled) {
-      // Multi-select: toggle tag on/off
+  const toggleTag = (tag: string, multiSelect: boolean) => {
+    if (multiSelect) {
       setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
     } else {
-      // Single-select: replace current selection
-      setSelectedTags(prev => 
+      setSelectedTags(prev =>
         prev.includes(tag) && prev.length === 1
-          ? [] // Deselect if clicking the same tag
-          : [tag] // Select this tag only
+          ? []
+          : [tag]
       );
     }
   };
@@ -470,21 +505,13 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
     });
   };
 
-  const requiredComplete = filteredFields
-    .filter(f => {
-      const fieldRequired = f.required || (f.requiredForTags?.some(tag => selectedTags.includes(tag)) ?? false);
-      return fieldRequired;
-    })
-    .every(f => (values[f.id] || "").trim());
-
   const copyAll = async () => {
-    if (!requiredComplete) { toast.error("Fill all required fields first"); return; }
-    const text = filteredFields.map(f => `${f.name}: ${values[f.id] || ""}`).join("\n\n");
-    await copyToClipboard(text, "Form copied to clipboard");
+    if (filteredFields.length === 0) { toast.error("Select tags to copy form fields"); return; }
+    await copyFormToClipboard(filteredFields, values, "Form copied to clipboard");
   };
 
   const saveForm = () => {
-    if (!requiredComplete) { toast.error("Fill all required fields first"); return; }
+    if (filteredFields.length === 0) { toast.error("Select tags to save form fields"); return; }
     const saved: SavedForm = {
       id: generateId(),
       fields: filteredFields.map(f => ({ name: f.name, value: values[f.id] || "" })),
@@ -509,7 +536,26 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
   };
 
   const copyField = async (field: FormField) => {
-    await copyToClipboard(values[field.id] || "", `Copied ${field.name}`);
+    const text = values[field.id] || "";
+    if (!text) {
+      toast.error(`Nothing to copy for ${field.name}`);
+      return;
+    }
+    await copyFieldValue(text, field.type, `Copied ${field.name}`);
+  };
+
+  const saveFieldInfo = (field: FormField) => {
+    if (!field.saveToInfoEnabled) {
+      toast.error("This field cannot save its value to the notice");
+      return;
+    }
+    const value = field.type === "checkbox"
+      ? (values[field.id] === "true" ? "Checked" : "Unchecked")
+      : values[field.id] || "";
+    const updated = storage.getFields().map(f => f.id === field.id ? { ...f, info: value } : f);
+    storage.setFields(updated);
+    refresh();
+    toast.success("Field description updated");
   };
 
   useEffect(() => {
@@ -543,113 +589,21 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
   };
 
   // Sort tags based on selected option
-  const sortedTags = useMemo(() => {
-    const tagsCopy = [...allTags];
-    
-    switch (tagSortOption) {
-      case "most-complete":
-        return tagsCopy.sort((a, b) => getTagProgress(b).percentage - getTagProgress(a).percentage);
-      case "least-complete":
-        return tagsCopy.sort((a, b) => getTagProgress(a).percentage - getTagProgress(b).percentage);
-      case "most-used":
-        return tagsCopy.sort((a, b) => getTagProgress(b).total - getTagProgress(a).total);
-      case "all":
-      default:
-        return tagsCopy;
-    }
-  }, [allTags, tagSortOption, values]);
+  const sortedTags = allTags;
 
   if (allTags.length === 0) {
     return <p className="text-muted-foreground text-center py-8">Create some fields first to start filling forms.</p>;
   }
 
   return (
-    <div className="flex gap-0 min-h-screen bg-background">
-      {/* Sidebar */}
-      <div
-        className={`${
-          sidebarOpen ? "w-64" : "w-16"
-        } bg-muted/40 border-r border-border transition-all duration-300 flex flex-col`}
-      >
-        {/* Menu Button */}
-        <div className="p-3 border-b border-border">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-10 h-10"
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
-        </div>
-
-        {/* Sidebar Content */}
-        {sidebarOpen && (
-          <div className="flex-1 overflow-y-auto p-3 space-y-4">
-            {/* Multiple Tags Toggle */}
-            <div className="space-y-2">
-              <Label className="font-semibold text-sm block">Settings</Label>
-              <div className="flex items-center justify-between bg-background rounded-md p-2">
-                <Label htmlFor="fillform-multiselect-toggle" className="text-xs text-muted-foreground cursor-pointer flex-1">
-                  Multiple Tags
-                </Label>
-                <Switch
-                  id="fillform-multiselect-toggle"
-                  checked={multiSelectEnabled}
-                  onCheckedChange={(enabled) => {
-                    setMultiSelectEnabled(enabled);
-                    localStorage.setItem("tagMultiSelectEnabled", JSON.stringify(enabled));
-                    if (!enabled && selectedTags.length > 1) {
-                      setSelectedTags([selectedTags[0]]);
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="border-t border-border pt-3">
-              <Label className="font-semibold mb-3 block text-sm">Sort Tags</Label>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setTagSortOption("all")}>
-                  <Checkbox checked={tagSortOption === "all"} onChange={() => setTagSortOption("all")} />
-                  <Label className="text-xs cursor-pointer group-hover:text-primary transition-colors flex-1">All Tags</Label>
-                </div>
-                <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setTagSortOption("most-complete")}>
-                  <Checkbox checked={tagSortOption === "most-complete"} onChange={() => setTagSortOption("most-complete")} />
-                  <Label className="text-xs cursor-pointer group-hover:text-primary transition-colors flex-1">Most Complete</Label>
-                </div>
-                <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setTagSortOption("least-complete")}>
-                  <Checkbox checked={tagSortOption === "least-complete"} onChange={() => setTagSortOption("least-complete")} />
-                  <Label className="text-xs cursor-pointer group-hover:text-primary transition-colors flex-1">Least Complete</Label>
-                </div>
-                <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setTagSortOption("most-used")}>
-                  <Checkbox checked={tagSortOption === "most-used"} onChange={() => setTagSortOption("most-used")} />
-                  <Label className="text-xs cursor-pointer group-hover:text-primary transition-colors flex-1">Most Used</Label>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Collapsed View Icons */}
-        {!sidebarOpen && (
-          <div className="flex-1 flex flex-col items-center gap-2 p-2">
-            <div className="text-xs text-muted-foreground font-semibold">☰</div>
-          </div>
-        )}
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
-        <div className="p-4 space-y-4">
+    <div className="min-h-screen bg-background">
+      <div className="p-4 space-y-4">
           <div>
             <div className="flex items-center justify-between mb-2">
               <Label>Select Tags to Build Form</Label>
             </div>
             <p className="text-xs text-muted-foreground mb-3">
-              {multiSelectEnabled 
-                ? "Click tags to select/deselect multiple" 
-                : "Click a tag to select it (previous selection will be deselected)"}
+              Hold Ctrl/Cmd while clicking tags to select multiple, or click a tag to select just one.
             </p>
             <div className="flex flex-wrap gap-2">
               {sortedTags.map(tag => {
@@ -660,11 +614,11 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
                   <div
                     key={tag}
                     className="relative group cursor-pointer"
-                    onClick={() => toggleTag(tag)}
+                    onClick={(e) => toggleTag(tag, e.ctrlKey || e.metaKey)}
                   >
                     <Badge
                       variant={isSelected ? "default" : "outline"}
-                      className="cursor-pointer px-3 py-1.5 relative overflow-hidden"
+                      className={`cursor-pointer px-3 py-1.5 relative overflow-hidden ${isSelected ? "border-red-500 border-2" : ""}`}
                     >
                       {/* Progress background - brighter color */}
                       <div
@@ -739,6 +693,16 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
                     </Button>
                   )}
                   <div className="ml-auto flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7"
+                      onClick={() => saveFieldInfo(f)}
+                      disabled={!f.saveToInfoEnabled || !(values[f.id] || "").trim()}
+                      title="Save current value into this field's notice"
+                    >
+                      <Save className="h-3 w-3" />
+                    </Button>
                     <Button size="sm" variant="ghost" className="h-7" onClick={() => copyField(f)}>
                       <Copy className="h-3 w-3" />
                     </Button>
@@ -821,16 +785,15 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
           )}
 
           <div className="flex gap-2">
-            <Button onClick={copyAll} disabled={!requiredComplete} className="flex-1">
+            <Button onClick={copyAll} disabled={filteredFields.length === 0} className="flex-1">
               <Copy className="h-4 w-4 mr-2" />Copy All
             </Button>
-            <Button onClick={saveForm} disabled={!requiredComplete} variant="secondary" className="flex-1">
+            <Button onClick={saveForm} disabled={filteredFields.length === 0} variant="secondary" className="flex-1">
               <Save className="h-4 w-4 mr-2" />Save Form
             </Button>
           </div>
         </div>
       )}
-        </div>
       </div>
     </div>
   );
@@ -849,6 +812,7 @@ export default function FormBuilderSection() {
     const saved = localStorage.getItem("tagMultiSelectEnabled");
     return saved !== null ? JSON.parse(saved) : true;
   });
+  const [searchQuery, setSearchQuery] = useState("");
 
   const refresh = () => {
     setFields(storage.getFields());
@@ -1000,6 +964,19 @@ export default function FormBuilderSection() {
 
   const defaultStatuses = ["pending", "waiting_customer", "processed", "on_hold"];
   const allStatuses = useMemo(() => [...new Set([...defaultStatuses, ...savedForms.map(f => f.status)])].sort(), [savedForms.length]);
+  
+  const filteredSavedForms = useMemo(() => {
+    if (!searchQuery.trim()) return savedForms;
+    const query = searchQuery.toLowerCase();
+    return savedForms.filter(form =>
+      form.fields.some(field =>
+        field.name.toLowerCase().includes(query) ||
+        field.value.toLowerCase().includes(query)
+      ) ||
+      form.tags.some(tag => tag.toLowerCase().includes(query)) ||
+      form.status.toLowerCase().includes(query)
+    );
+  }, [savedForms, searchQuery]);
 
   const updateFormStatus = (formId: string, newStatus: string) => {
     if (newStatus === "___custom___") {
@@ -1277,15 +1254,23 @@ export default function FormBuilderSection() {
               <p className="text-muted-foreground text-center py-8">No saved forms yet.</p>
             ) : (
               <>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <span className="text-sm text-muted-foreground">Filter: </span>
-                  {allStatuses.map(status => (
-                    <Badge key={status} variant="outline" className="cursor-pointer text-xs capitalize">
-                      {status.replace("_", " ")} ({savedForms.filter(f => f.status === status).length})
-                    </Badge>
-                  ))}
+                <div className="space-y-3 mb-4">
+                  <Input
+                    placeholder="Search saved forms..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-sm text-muted-foreground">Filter: </span>
+                    {allStatuses.map(status => (
+                      <Badge key={status} variant="outline" className="cursor-pointer text-xs capitalize">
+                        {status.replace("_", " ")} ({savedForms.filter(f => f.status === status).length})
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-                {savedForms.map(sf => (
+                {filteredSavedForms.map(sf => (
               <Card key={sf.id} className="p-4">
                 <div className="flex justify-between items-start mb-3">
                   <div>
@@ -1315,10 +1300,7 @@ export default function FormBuilderSection() {
                     <div className="flex gap-1 mt-1">{sf.tags.map(t => <Badge key={t} variant="outline" className="text-xs">{t}</Badge>)}</div>
                   </div>
                   <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" onClick={async () => {
-                      const text = sf.fields.map(f => `${f.name}: ${f.value}`).join("\n\n");
-                      await copyToClipboard(text, "Copied");
-                    }}><Copy className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={async () => await copySavedFormToClipboard(sf)}><Copy className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => editSavedForm(sf.id)}><Edit2 className="h-4 w-4 text-primary" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => deleteSavedForm(sf.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                   </div>

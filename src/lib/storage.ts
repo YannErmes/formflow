@@ -1,9 +1,10 @@
 export interface FormField {
   id: string;
   name: string;
-  type: "text" | "dropdown" | "checkbox";
+  type: "text" | "dropdown" | "checkbox" | "image";
   options?: string[]; // for dropdown
   info: string;
+  saveToInfoEnabled?: boolean;
   required: boolean;
   requiredForTags?: string[];
   tags: string[];
