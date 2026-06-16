@@ -452,6 +452,7 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
   const [infoPopupOpen, setInfoPopupOpen] = useState<string | null>(null);
   const [infoPopupPosition, setInfoPopupPosition] = useState({ top: 150, left: 150 });
   const [infoPopupDrag, setInfoPopupDrag] = useState<{ x: number; y: number; top: number; left: number } | null>(null);
+  const [suggestionsFieldId, setSuggestionsFieldId] = useState<string | null>(null);
 
   // Load draft on component mount
   useEffect(() => {
@@ -512,9 +513,12 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
 
   const saveForm = () => {
     if (filteredFields.length === 0) { toast.error("Select tags to save form fields"); return; }
+    // Only save fields that have non-empty values
+    const fieldsToSave = filteredFields.filter(f => (values[f.id] || "").trim() !== "");
+    if (fieldsToSave.length === 0) { toast.error("No fields with content to save"); return; }
     const saved: SavedForm = {
       id: generateId(),
-      fields: filteredFields.map(f => ({ name: f.name, value: values[f.id] || "" })),
+      fields: fieldsToSave.map(f => ({ name: f.name, value: values[f.id] || "" })),
       tags: selectedTags,
       status: "pending",
       savedAt: new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long", }),
@@ -552,7 +556,9 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
     const value = field.type === "checkbox"
       ? (values[field.id] === "true" ? "Checked" : "Unchecked")
       : values[field.id] || "";
-    const updated = storage.getFields().map(f => f.id === field.id ? { ...f, info: value } : f);
+    // Append to existing description instead of replacing it
+    const newInfo = field.info ? `${field.info}\n${value}` : value;
+    const updated = storage.getFields().map(f => f.id === field.id ? { ...f, info: newInfo } : f);
     storage.setFields(updated);
     refresh();
     toast.success("Field description updated");
@@ -590,6 +596,13 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
 
   // Sort tags based on selected option
   const sortedTags = allTags;
+
+  const getSuggestions = (field: FormField, input: string): string[] => {
+    if (!input.trim() || !field.info) return [];
+    const lines = field.info.split('\n').filter(line => line.trim() !== '');
+    const inputLower = input.toLowerCase();
+    return lines.filter(line => line.toLowerCase().includes(inputLower));
+  };
 
   if (allTags.length === 0) {
     return <p className="text-muted-foreground text-center py-8">Create some fields first to start filling forms.</p>;
@@ -712,7 +725,35 @@ function FormFiller({ fields, refresh }: { fields: FormField[]; refresh: () => v
                   </div>
                 </div>
                 {f.type === "text" && (
-                  <Input value={values[f.id] || ""} onChange={e => setValues({ ...values, [f.id]: e.target.value })} placeholder={`Enter ${f.name.toLowerCase()}`} />
+                  <div className="relative">
+                    <Input 
+                      value={values[f.id] || ""} 
+                      onChange={e => setValues({ ...values, [f.id]: e.target.value })} 
+                      onFocus={() => setSuggestionsFieldId(f.id)}
+                      onBlur={() => setTimeout(() => setSuggestionsFieldId(null), 150)}
+                      placeholder={`Enter ${f.name.toLowerCase()}`} 
+                    />
+                    {suggestionsFieldId === f.id && (values[f.id] || "").trim() && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-md z-40 max-h-48 overflow-y-auto">
+                        {getSuggestions(f, values[f.id] || "").map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setValues({ ...values, [f.id]: suggestion });
+                              setSuggestionsFieldId(null);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-accent transition-colors text-sm border-b border-border last:border-b-0"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                        {getSuggestions(f, values[f.id] || "").length === 0 && (
+                          <p className="px-3 py-2 text-xs text-muted-foreground">No matching suggestions</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {f.type === "dropdown" && (
                   <Combobox
